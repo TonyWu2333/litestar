@@ -436,6 +436,44 @@ def test_annotated_types() -> None:
     assert schema.properties["constrained_is_digit"].pattern == "[[:digit:]]"  # type: ignore[index, union-attr]
 
 
+def test_msgspec_meta_outside_of_struct() -> None:
+    @dataclass
+    class MyDataclass:
+        constrained_int: Annotated[int, msgspec.Meta(gt=1, le=10, description="description")]
+        constrained_str: Annotated[
+            str, msgspec.Meta(min_length=1, max_length=8, pattern="^[a-z]+$", title="title", examples=["abc"])
+        ]
+        constrained_list: Annotated[list[int], msgspec.Meta(min_length=1, max_length=3)]
+
+    schema = get_schema_for_field_definition(FieldDefinition.from_kwarg(name="MyDataclass", annotation=MyDataclass))
+
+    assert schema.properties["constrained_int"].exclusive_minimum == 1  # type: ignore[index, union-attr]
+    assert schema.properties["constrained_int"].maximum == 10  # type: ignore[index, union-attr]
+    assert schema.properties["constrained_int"].description == "description"  # type: ignore[index]
+    assert schema.properties["constrained_str"].min_length == 1  # type: ignore[index, union-attr]
+    assert schema.properties["constrained_str"].max_length == 8  # type: ignore[index, union-attr]
+    assert schema.properties["constrained_str"].pattern == "^[a-z]+$"  # type: ignore[index, union-attr]
+    assert schema.properties["constrained_str"].title == "title"  # type: ignore[index, union-attr]
+    assert schema.properties["constrained_str"].examples == ["abc"]  # type: ignore[index, union-attr]
+    assert schema.properties["constrained_list"].min_items == 1  # type: ignore[index, union-attr]
+    assert schema.properties["constrained_list"].max_items == 3  # type: ignore[index, union-attr]
+
+
+def test_msgspec_meta_description_on_annotated_struct() -> None:
+    # https://github.com/litestar-org/litestar/issues/3997
+    class Resp(msgspec.Struct):
+        foo: str = "bar"
+
+    @get("/")
+    async def handler() -> Annotated[Resp, msgspec.Meta(description="A response object.")]:
+        return Resp()
+
+    schema = Litestar([handler]).openapi_schema.to_schema()
+    response_schema = schema["paths"]["/"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+
+    assert response_schema["description"] == "A response object."
+
+
 def test_literal_enums() -> None:
     class Foo(Enum):
         A = auto()

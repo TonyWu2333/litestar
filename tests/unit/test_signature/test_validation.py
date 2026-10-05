@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Annotated, Generic, Optional, TypeVar
 
+import msgspec
 import pytest
 from attr import define
 from typing_extensions import TypedDict
@@ -82,6 +83,17 @@ def test_validation_failure_raises_400() -> None:
         "extra": [{"key": "param", "message": "Expected `int`, got `str`", "source": "query"}],
         "status_code": 400,
     }
+
+
+def test_msgspec_meta_constraints_on_parameter_are_validated() -> None:
+    @get("/")
+    def handler(limit: Annotated[int, msgspec.Meta(gt=0, le=100)]) -> int:
+        return limit
+
+    with create_test_client(handler) as client:
+        assert client.get("/", params={"limit": 10}).status_code == 200
+        assert client.get("/", params={"limit": 0}).status_code == HTTP_400_BAD_REQUEST
+        assert client.get("/", params={"limit": 101}).status_code == HTTP_400_BAD_REQUEST
 
 
 def test_invalid_path_parameter() -> None:
